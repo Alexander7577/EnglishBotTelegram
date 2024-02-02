@@ -1,5 +1,9 @@
 import requests
 from config import YANDEX_TRANSLATE_TOKEN, YANDEXGPT_TOKEN
+from voice_phrase import easy_phrases, medium_phrases, hard_phrases
+import random
+from gtts import gTTS
+from io import BytesIO
 
 
 def talking_to_ai(message):
@@ -96,7 +100,8 @@ def talking_to_ai(message):
 
 async def send_answer_ai(bot, message, loading_message):
     response = talking_to_ai(message)
-    bot.edit_message_text(chat_id=message.chat.id, message_id=loading_message.message_id, text=f"{response}", parse_mode='Markdown')
+    bot.edit_message_text(chat_id=message.chat.id, message_id=loading_message.message_id, text=f"{response}",
+                          parse_mode='Markdown')
     return response
 
 
@@ -142,6 +147,54 @@ async def translate_and_send_response(bot, message, loading_message):
     translated_text = translate_text(message.text)
     bot.edit_message_text(chat_id=message.chat.id, message_id=loading_message.message_id, text=f"{translated_text}")
     return translated_text
+
+
+def send_voice_message(bot, user_audio_promotion, message):
+    try:
+        if message.text == "😌 Легко":
+            if not user_audio_promotion or 'easy phrases' not in user_audio_promotion:
+                user_audio_promotion[message.chat.id] = {'easy phrases': easy_phrases}
+            difficulty_lvl = 'easy phrases'
+            random.shuffle(user_audio_promotion[message.chat.id]['easy phrases'])
+            phrase = user_audio_promotion[message.chat.id]['easy phrases'][0]
+        elif message.text == "😐 Средне":
+            if not user_audio_promotion or 'medium phrases' not in user_audio_promotion:
+                user_audio_promotion[message.chat.id] = {'medium phrases': medium_phrases}
+            difficulty_lvl = 'medium phrases'
+            random.shuffle(user_audio_promotion[message.chat.id]['medium phrases'])
+            phrase = user_audio_promotion[message.chat.id]['medium phrases'][0]
+        elif message.text == "🤯 Сложно":
+            if not user_audio_promotion or 'hard phrases' not in user_audio_promotion:
+                user_audio_promotion[message.chat.id] = {'hard phrases': hard_phrases}
+            difficulty_lvl = 'hard phrases'
+            random.shuffle(user_audio_promotion[message.chat.id]['hard phrases'])
+            phrase = user_audio_promotion[message.chat.id]['hard phrases'][0]
+    # Если появляется ошибка, значит фразы кончились, сообщаем пользователю, что он справился со всеми фразами
+    except IndexError:
+        return None, None, None
+
+    # текст для озвучивания
+    text_to_speech = phrase
+
+    # Создаём объект gTTS с текстом
+    tts = gTTS(text=text_to_speech, lang='en')
+
+    # Создайте BytesIO объект для сохранения голосового сообщения
+    voice_message = BytesIO()
+    tts.write_to_fp(voice_message)
+
+    # Перемотайте файл до начала
+    voice_message.seek(0)
+
+    return phrase, voice_message, difficulty_lvl
+
+
+def delete_punctuation_marks(text: str):
+    punc_marks = ".,!?':/|`"
+    for mark in punc_marks:
+        if mark in text:
+            text = text.replace(mark, '')
+    return text.lower()
 
 
 # Считаем результаты пользователя и даём фидбэк
