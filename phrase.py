@@ -1,3 +1,5 @@
+from database import add_daily_phrase, get_phrases, get_all_users, set_phrases, user_audio_promotion_exists
+
 easy_phrases = [
     "Hello, nice to meet you!",
     "I enjoy sunny days.",
@@ -91,3 +93,41 @@ hard_phrases = [
     "The kaleidoscope of existence refracts myriad perspectives.",
     "Philosophical discourse is the crucible of intellectual refinement.",
 ]
+
+daily_phrases = [
+    "Break a leg! - Ни пуха, ни пера!",
+    "It's a piece of cake. - Это проще простого.",
+    "The ball is in your court. - Теперь твой ход.",
+    "Bite the bullet. - Зуб даю!",
+    "Hit the hay. - Иди ко сну.",
+    "Burn the midnight oil. - Работать всю ночь.",
+    "Jump on the bandwagon. - Пойти в ногу со временем.",
+    "Cost an arm and a leg. - Стоить целое состояние.",
+    "See eye to eye. - Понимать друг друга.",
+    "The early bird catches the worm. - Кто рано встаёт, тому Бог подаёт.",
+    "Hit the nail on the head. - Попасть в самую точку.",
+    "The best of both worlds. - Лучшее из обоих миров.",
+    "Throw in the towel. - Сдаться.",
+    "Burn bridges. - Сжечь мосты.",
+    "Bite off more than you can chew. - Взять слишком много на себя.",
+    "Under the weather. - Под погодой.",
+    "Cut to the chase. - Перейти к сути.",
+    "Hit the books. - Учиться, зубрить.",
+]
+
+
+# Добавляем в бд новые фразы, для функции "Фраза дня"
+def add_daily_phases(new_phrases):
+    for phrase in new_phrases:
+        add_daily_phrase(phrase)
+
+
+# Добавляем в бд новые фразы для режима "Аудирование"
+def add_phrase(difficult_lvl, new_phrases):
+    users = get_all_users()
+    for user in users:
+        if user_audio_promotion_exists(user):
+            phrases = get_phrases(user, difficult_lvl)
+            phrases.extend(new_phrases)
+            set_phrases(user, difficult_lvl, phrases)
+

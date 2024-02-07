@@ -1,9 +1,13 @@
 import requests
+from log import logger
 from config import YANDEX_TRANSLATE_TOKEN, YANDEXGPT_TOKEN
-from voice_phrase import easy_phrases, medium_phrases, hard_phrases
+from phrase import easy_phrases, medium_phrases, hard_phrases
+from database import get_phrases, set_phrases, set_difficulty_lvl, set_right_text_phrase, set_task_name, get_progress_conversation,\
+    get_progress_listening, get_progress_translating, get_progress_tests, set_is_day_completed, get_days_completed, set_days_completed, get_is_day_completed
 import random
 from gtts import gTTS
 from io import BytesIO
+import datetime
 
 
 def talking_to_ai(message):
@@ -23,7 +27,7 @@ def talking_to_ai(message):
                         f"В программировании твой любимый язык - Python."
                         f"Ты советуешь поддерживать здоровый образ жизни"
                         f"Твои ответы не должны быть слишком большие, если того не требует человек."
-                        f"Тебя создал Александр, ты уважительно к нему относишься."
+                        f"Тебя создал человек по имени Александр."
                         f"Человека с кем ты общаешься зовут {message.chat.first_name}, старайся чаще обращаться к нему по имени."
                         f"Твой род строго мужской, не ставь себя в женский!"
                         f"Старайся больше шутить и больше ставь эмодзи, эмодзи должны быть разнообразные."
@@ -94,8 +98,9 @@ def talking_to_ai(message):
     try:
         response = requests.post(url, headers=headers, json=prompt)
         return response.json()['result']['alternatives'][0]['message']['text']
-    except KeyError:
-        return "🔴 Что-то пошло не так, попробуйте отправить сообщение ещё раз"
+    except Exception as e:
+        logger.error("Error occurred: {}".format(e))
+        return '🔴 Что-то пошло не так, попробуйте отправить сообщение ещё раз'
 
 
 async def send_answer_ai(bot, message, loading_message):
@@ -139,8 +144,12 @@ def translate_text(text):
                              headers=headers
                              )
 
-    translation_text = response.json()["translations"][0]["text"]
-    return translation_text
+    try:
+        translation_text = response.json()["translations"][0]["text"]
+        return translation_text
+    except Exception as e:
+        logger.error("Error occurred: {}".format(e))
+        return '🔴 Что-то пошло не так, попробуйте отправить сообщение ещё раз'
 
 
 async def translate_and_send_response(bot, message, loading_message):
@@ -149,29 +158,29 @@ async def translate_and_send_response(bot, message, loading_message):
     return translated_text
 
 
-def send_voice_message(bot, user_audio_promotion, message):
+def get_voice_message(message):
     try:
         if message.text == "😌 Легко":
-            if not user_audio_promotion or 'easy phrases' not in user_audio_promotion:
-                user_audio_promotion[message.chat.id] = {'easy phrases': easy_phrases}
-            difficulty_lvl = 'easy phrases'
-            random.shuffle(user_audio_promotion[message.chat.id]['easy phrases'])
-            phrase = user_audio_promotion[message.chat.id]['easy phrases'][0]
+            difficulty_lvl = 'easy_phrases'
+            lvl_phrases = easy_phrases
         elif message.text == "😐 Средне":
-            if not user_audio_promotion or 'medium phrases' not in user_audio_promotion:
-                user_audio_promotion[message.chat.id] = {'medium phrases': medium_phrases}
-            difficulty_lvl = 'medium phrases'
-            random.shuffle(user_audio_promotion[message.chat.id]['medium phrases'])
-            phrase = user_audio_promotion[message.chat.id]['medium phrases'][0]
+            difficulty_lvl = 'medium_phrases'
+            lvl_phrases = medium_phrases
         elif message.text == "🤯 Сложно":
-            if not user_audio_promotion or 'hard phrases' not in user_audio_promotion:
-                user_audio_promotion[message.chat.id] = {'hard phrases': hard_phrases}
-            difficulty_lvl = 'hard phrases'
-            random.shuffle(user_audio_promotion[message.chat.id]['hard phrases'])
-            phrase = user_audio_promotion[message.chat.id]['hard phrases'][0]
-    # Если появляется ошибка, значит фразы кончились, сообщаем пользователю, что он справился со всеми фразами
-    except IndexError:
-        return None, None, None
+            difficulty_lvl = 'hard_phrases'
+            lvl_phrases = hard_phrases
+
+        if not get_phrases(message.chat.id, difficulty_lvl):
+            set_phrases(message.chat.id, difficulty_lvl, lvl_phrases)
+        set_difficulty_lvl(message.chat.id, difficulty_lvl)
+        phrases = get_phrases(message.chat.id, difficulty_lvl)
+        random.shuffle(phrases)
+        phrase = phrases[0]
+        set_right_text_phrase(message.chat.id, phrase)
+
+    # Если появляется ошибка, значит фразы кончились, далее сообщим пользователю, что он справился со всеми фразами
+    except TypeError:
+        return None
 
     # текст для озвучивания
     text_to_speech = phrase
@@ -186,7 +195,7 @@ def send_voice_message(bot, user_audio_promotion, message):
     # Перемотайте файл до начала
     voice_message.seek(0)
 
-    return phrase, voice_message, difficulty_lvl
+    return voice_message
 
 
 def delete_punctuation_marks(text: str):
@@ -211,3 +220,107 @@ def calculate_score(all_questions, right_questions):
         return "Хороший результат, но не без нюансов 🙂\nЕщё одна попытка, и вы окончательно освоите этот уровень. Подготовьтесь к новому витку ваших приключений!"
     else:
         return "Отличный результат 👍\nВам вручается звание Знатока! Теперь можно идти разгадывать загадки Вселенной."
+
+
+def get_tasks(user):
+    today = datetime.datetime.now().weekday()  # Получаем в переменную день недели. Каждый день разные задания
+    if today == 0 and not get_is_day_completed(user):
+        task = '1) Правильно написать 5 фраз в режиме "Аудирование" на любом уровне сложности\n' \
+               '2) Поговорить или задать вопросы в режиме "Общение с носителем языка" 5 раз'
+        set_task_name(user, task)
+    elif today == 1 and not get_is_day_completed(user):
+        task = '1) Пройти любой тест и набрать не менее 70%\n' \
+               '2) Перевести 5 разных слов или предложений в переводчике'
+        set_task_name(user, task)
+    elif today == 2 and not get_is_day_completed(user):
+        task = '1) Правильно написать 5 фраз в режиме "Аудирование" на любом уровне сложности\n' \
+               '2) Перевести 5 разных слов или предложений в переводчике'
+        set_task_name(user, task)
+    elif today == 3 and not get_is_day_completed(user):
+        task = '1) Поговорить или задать вопросы в режиме "Общение с носителем языка" 5 раз\n' \
+               '2) Пройти любой тест и набрать не менее 70%'
+        set_task_name(user, task)
+    elif today == 4 and not get_is_day_completed(user):
+        task = '1) Правильно написать 5 фраз в режиме "Аудирование" на любом уровне сложности\n' \
+               '2) Пройти любой тест и набрать не менее 70%'
+        set_task_name(user, task)
+    elif today == 5 and not get_is_day_completed(user):
+        task = '1) Поговорить или задать вопросы в режиме "Общение с носителем языка" 5 раз\n' \
+               '2) Перевести 5 разных слов или предложений в переводчике'
+        set_task_name(user, task)
+    elif today == 6 and not get_is_day_completed(user):
+        task = '1) Правильно написать 5 фраз в режиме "Аудирование" на любом уровне сложности\n' \
+               '2) Пройти любой тест и набрать не менее 70%'
+        set_task_name(user, task)
+    else:
+        task = 'Вы выполнили все задания на сегодня!'
+
+    return task
+
+
+def check_complete_task(bot, message):
+    if not get_is_day_completed(message.chat.id):  # Если пользователь ещё не завершил квест
+        today = datetime.datetime.now().weekday()
+        if today == 0:
+            if get_progress_listening(message.chat.id) >= 5 and get_progress_conversation(message.chat.id) >= 5:  # Проверяем, выполнил ли пользователь задания на день
+                set_is_day_completed(message.chat.id, 1)
+
+                days_completed = get_days_completed(message.chat.id)
+                set_days_completed(message.chat.id, 1) if days_completed == 0 else set_days_completed(message.chat.id, days_completed + 1)
+
+                bot.send_message(message.chat.id, f"Поздравляем с успешным завершением квеста за понедельник! 🎉\n"
+                                                  f"Ваш прогресс на сегодняшний день: {get_days_completed(message.chat.id)} завершенных дней. Продолжайте в том же духе! 💪")
+        elif today == 1:
+            if get_progress_tests(message.chat.id) >= 1 and get_progress_translating(message.chat.id) >= 5:
+                set_is_day_completed(message.chat.id, 1)
+
+                days_completed = get_days_completed(message.chat.id)
+                set_days_completed(message.chat.id, 1) if days_completed == 0 else set_days_completed(message.chat.id, days_completed + 1)
+
+                bot.send_message(message.chat.id, f"Поздравляем с успешным завершением квеста за вторник! 🎉\n"
+                                                  f"Ваш прогресс на сегодняшний день: {get_days_completed(message.chat.id)} завершенных дней. Продолжайте в том же духе! 💪")
+        elif today == 2:
+            if get_progress_listening(message.chat.id) >= 5 and get_progress_translating(message.chat.id) >= 5:
+                set_is_day_completed(message.chat.id, 1)
+
+                days_completed = get_days_completed(message.chat.id)
+                set_days_completed(message.chat.id, 1) if days_completed == 0 else set_days_completed(message.chat.id, days_completed + 1)
+
+                bot.send_message(message.chat.id, f"Поздравляем с успешным завершением квеста за среду! 🎉\n"
+                                                  f"Ваш прогресс на сегодняшний день: {get_days_completed(message.chat.id)} завершенных дней. Продолжайте в том же духе! 💪")
+        elif today == 3:
+            if get_progress_conversation(message.chat.id) >= 5 and get_progress_tests(message.chat.id) >= 1:
+                set_is_day_completed(message.chat.id, 1)
+
+                days_completed = get_days_completed(message.chat.id)
+                set_days_completed(message.chat.id, 1) if days_completed == 0 else set_days_completed(message.chat.id, days_completed + 1)
+
+                bot.send_message(message.chat.id, f"Поздравляем с успешным завершением квеста за четверг! 🎉\n"
+                                                  f"Ваш прогресс на сегодняшний день: {get_days_completed(message.chat.id)} завершенных дней. Продолжайте в том же духе! 💪")
+        elif today == 4:
+            if get_progress_listening(message.chat.id) >= 5 and get_progress_tests(message.chat.id) >= 1:
+                set_is_day_completed(message.chat.id, 1)
+
+                days_completed = get_days_completed(message.chat.id)
+                set_days_completed(message.chat.id, 1) if days_completed == 0 else set_days_completed(message.chat.id, days_completed + 1)
+
+                bot.send_message(message.chat.id, f"Поздравляем с успешным завершением квеста за пятницу! 🎉\n"
+                                                  f"Ваш прогресс на сегодняшний день: {get_days_completed(message.chat.id)} завершенных дней. Продолжайте в том же духе! 💪")
+        elif today == 5:
+            if get_progress_conversation(message.chat.id) >= 5 and get_progress_translating(message.chat.id) >= 5:
+                set_is_day_completed(message.chat.id, 1)
+
+                days_completed = get_days_completed(message.chat.id)
+                set_days_completed(message.chat.id, 1) if days_completed == 0 else set_days_completed(message.chat.id, days_completed + 1)
+
+                bot.send_message(message.chat.id, f"Поздравляем с успешным завершением квеста за субботу! 🎉\n"
+                                                  f"Ваш прогресс на сегодняшний день: {get_days_completed(message.chat.id)} завершенных дней. Продолжайте в том же духе! 💪")
+        elif today == 6:
+            if get_progress_listening(message.chat.id) >= 5 and get_progress_tests(message.chat.id) >= 1:
+                set_is_day_completed(message.chat.id, 1)
+
+                days_completed = get_days_completed(message.chat.id)
+                set_days_completed(message.chat.id, 1) if days_completed == 0 else set_days_completed(message.chat.id, days_completed + 1)
+
+                bot.send_message(message.chat.id, f"Поздравляем с успешным завершением квеста за воскресенье! 🎉\n"
+                                                  f"Ваш прогресс на сегодняшний день: {get_days_completed(message.chat.id)} завершенных дней. Продолжайте в том же духе! 💪")
