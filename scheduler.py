@@ -12,7 +12,10 @@ def phrase_of_the_day(bot):
     else:
         users = get_all_users()  # Получаем всех пользователей бота
         for user in users:
-            bot.send_message(user, f'Фраза дня!\n\n{phrase}')  # посылаем каждому пользователю фразу
+            try:
+                bot.send_message(user, f'Фраза дня!\n\n{phrase}')
+            except Exception as e:
+                logger.error(f"Произошла ошибка при отправке сообщения пользователю {user}: {e}")
         # Удаляем использованную фразу
         remove_daily_phrase(phrase)
         logger.info(f"Отправлена фраза дня всем пользователям - {phrase}")
@@ -27,6 +30,7 @@ def adjust_days():
         elif get_is_day_completed(user):  # Если пользователь завершил квест за день, то начиная новый день, устанавливаем индикатор завершённого квеста в False, и сбрасываем прогресс
             set_is_day_completed(user, 0)
             reset_all_progress()
+    logger.info(f"День кончился, появились новые квесты, сбросился прогресс пользователей за день")
 
 
 def start_scheduler(bot):
@@ -34,9 +38,9 @@ def start_scheduler(bot):
     scheduler = BackgroundScheduler()
 
     # Добавляем задачу, которая будет выполняться каждый день в 17:00
-    scheduler.add_job(phrase_of_the_day, 'cron', hour=17, minute=0, args=[bot])
+    scheduler.add_job(phrase_of_the_day, 'cron', hour=17, args=[bot])
 
-    scheduler.add_job(adjust_days, 'cron', hour=1, minute=52)
+    scheduler.add_job(adjust_days, 'cron', hour=0)
 
     # Запускаем планировщик
     scheduler.start()

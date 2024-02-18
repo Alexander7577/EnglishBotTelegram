@@ -1,3 +1,4 @@
+import time
 import telebot
 import asyncio
 from log import logger
@@ -13,7 +14,7 @@ from database import create_table, user_exists, create_user, get_user_state, set
     user_audio_promotion_exists, create_user_audio_promotion, user_daily_tasks_exists, create_user_daily_tasks,\
     get_progress_conversation, set_progress_conversation,\
     get_progress_translating, set_progress_translating,\
-    get_progress_listening, set_progress_listening, get_progress_tests, set_progress_tests, get_days_completed
+    get_progress_listening, set_progress_listening, get_progress_tests, set_progress_tests, get_days_completed, get_all_users
 
 
 # Создаём таблицы в бд, если их ещё нет
@@ -69,6 +70,7 @@ def daily(message: telebot.types.Message):
                          f"В благодарность за ваши достижения, мы хотим вручить вам приз от разработчика! Для получения приза, напишите разработчику @Sanechka757, и он поможет вам с получением. 🎁\n"
                          f"Благодарим вас за то, что выбрали нас! Ваш вклад в наше сообщество очень ценен. Спасибо, что вы с нами! 🙌",
                          reply_markup=markup, parse_mode='Markdown')
+        logger.warning(f'{message.chat.username} - {message.chat.last_name} - {message.chat.first_name} | Выполнил(а) условия для получения приза!')
     else:
         bot.send_message(message.chat.id, 'К сожалению сейчас вы не можете получить свой приз 😔\n'
                                           'Призы выдаются только после выполнения ежедневных заданий в течении 7 дней подряд.\n'
@@ -445,4 +447,10 @@ def handle_text(message: telebot.types.Message, audio=False):
         bot.send_message(message.chat.id, "Выберите функцию для бота =)")
 
 
-bot.polling(none_stop=True)
+if __name__ == '__main__':
+    while True:
+        try:
+            bot.polling(none_stop=True)
+        except Exception as e:
+            time.sleep(3)
+            logger.error(e)

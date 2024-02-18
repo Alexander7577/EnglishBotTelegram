@@ -270,6 +270,7 @@ def check_complete_task(bot, message):
 
                 bot.send_message(message.chat.id, f"Поздравляем с успешным завершением квеста за понедельник! 🎉\n"
                                                   f"Ваш прогресс на сегодняшний день: {get_days_completed(message.chat.id)} завершенных дней. Продолжайте в том же духе! 💪")
+                logger.info(f'{message.chat.username} - {message.chat.last_name} - {message.chat.first_name} | выполнил(а) квест за понедельник')
         elif today == 1:
             if get_progress_tests(message.chat.id) >= 1 and get_progress_translating(message.chat.id) >= 5:
                 set_is_day_completed(message.chat.id, 1)
@@ -279,6 +280,8 @@ def check_complete_task(bot, message):
 
                 bot.send_message(message.chat.id, f"Поздравляем с успешным завершением квеста за вторник! 🎉\n"
                                                   f"Ваш прогресс на сегодняшний день: {get_days_completed(message.chat.id)} завершенных дней. Продолжайте в том же духе! 💪")
+                logger.info(
+                    f'{message.chat.username} - {message.chat.last_name} - {message.chat.first_name} | выполнил(а) квест за вторник')
         elif today == 2:
             if get_progress_listening(message.chat.id) >= 5 and get_progress_translating(message.chat.id) >= 5:
                 set_is_day_completed(message.chat.id, 1)
@@ -288,6 +291,8 @@ def check_complete_task(bot, message):
 
                 bot.send_message(message.chat.id, f"Поздравляем с успешным завершением квеста за среду! 🎉\n"
                                                   f"Ваш прогресс на сегодняшний день: {get_days_completed(message.chat.id)} завершенных дней. Продолжайте в том же духе! 💪")
+                logger.info(
+                    f'{message.chat.username} - {message.chat.last_name} - {message.chat.first_name} | выполнил(а) квест за среду')
         elif today == 3:
             if get_progress_conversation(message.chat.id) >= 5 and get_progress_tests(message.chat.id) >= 1:
                 set_is_day_completed(message.chat.id, 1)
@@ -297,6 +302,8 @@ def check_complete_task(bot, message):
 
                 bot.send_message(message.chat.id, f"Поздравляем с успешным завершением квеста за четверг! 🎉\n"
                                                   f"Ваш прогресс на сегодняшний день: {get_days_completed(message.chat.id)} завершенных дней. Продолжайте в том же духе! 💪")
+                logger.info(
+                    f'{message.chat.username} - {message.chat.last_name} - {message.chat.first_name} | выполнил(а) квест за четверг')
         elif today == 4:
             if get_progress_listening(message.chat.id) >= 5 and get_progress_tests(message.chat.id) >= 1:
                 set_is_day_completed(message.chat.id, 1)
@@ -306,6 +313,8 @@ def check_complete_task(bot, message):
 
                 bot.send_message(message.chat.id, f"Поздравляем с успешным завершением квеста за пятницу! 🎉\n"
                                                   f"Ваш прогресс на сегодняшний день: {get_days_completed(message.chat.id)} завершенных дней. Продолжайте в том же духе! 💪")
+                logger.info(
+                    f'{message.chat.username} - {message.chat.last_name} - {message.chat.first_name} | выполнил(а) квест за пятницу')
         elif today == 5:
             if get_progress_conversation(message.chat.id) >= 5 and get_progress_translating(message.chat.id) >= 5:
                 set_is_day_completed(message.chat.id, 1)
@@ -315,6 +324,8 @@ def check_complete_task(bot, message):
 
                 bot.send_message(message.chat.id, f"Поздравляем с успешным завершением квеста за субботу! 🎉\n"
                                                   f"Ваш прогресс на сегодняшний день: {get_days_completed(message.chat.id)} завершенных дней. Продолжайте в том же духе! 💪")
+                logger.info(
+                    f'{message.chat.username} - {message.chat.last_name} - {message.chat.first_name} | выполнил(а) квест за субботу')
         elif today == 6:
             if get_progress_listening(message.chat.id) >= 5 and get_progress_tests(message.chat.id) >= 1:
                 set_is_day_completed(message.chat.id, 1)
@@ -324,3 +335,5 @@ def check_complete_task(bot, message):
 
                 bot.send_message(message.chat.id, f"Поздравляем с успешным завершением квеста за воскресенье! 🎉\n"
                                                   f"Ваш прогресс на сегодняшний день: {get_days_completed(message.chat.id)} завершенных дней. Продолжайте в том же духе! 💪")
+                logger.info(
+                    f'{message.chat.username} - {message.chat.last_name} - {message.chat.first_name} | выполнил(а) квест за воскресенье')
