@@ -7,14 +7,15 @@ from config import TOKEN
 from scheduler import start_scheduler
 from questions import questions_a0, questions_a1, questions_a2
 from func import calculate_score, translate_and_send_response, send_answer_ai, get_voice_message,\
-    delete_punctuation_marks, get_tasks, check_complete_task
+    delete_punctuation_marks, get_tasks, check_complete_task, convert_voice_in_text, get_pronunciation_phrase, record_voice_message
 from database import create_table, user_exists, create_user, get_user_state, set_user_state,\
     get_question_number, set_question_number, get_right_answers, set_right_answers,\
     create_user_answers, user_answers_exists, get_right_text_phrase, get_phrases, set_phrases, get_difficulty_lvl,\
-    user_audio_promotion_exists, create_user_audio_promotion, user_daily_tasks_exists, create_user_daily_tasks,\
+    user_promotion_exists, create_user_promotion, user_daily_tasks_exists, create_user_daily_tasks,\
     get_progress_conversation, set_progress_conversation,\
     get_progress_translating, set_progress_translating,\
-    get_progress_listening, set_progress_listening, get_progress_tests, set_progress_tests, get_days_completed, get_all_users
+    get_progress_listening, set_progress_listening, get_progress_tests, set_progress_tests, get_days_completed,\
+    get_progress_pronunciation, set_progress_pronunciation, get_all_users
 
 
 # Создаём таблицы в бд, если их ещё нет
@@ -36,12 +37,17 @@ def welcome(message: telebot.types.Message):
 
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=True)
     item1 = types.KeyboardButton("🗣️ Общение с носителем языка")
-    item2 = types.KeyboardButton("🌐 Переводчик")
-    item3 = types.KeyboardButton("👂 Аудирование")
-    item4 = types.KeyboardButton("✍️ Тесты")
-    item5 = types.KeyboardButton("🎯 Ежедневные задания")
-    item6 = types.KeyboardButton("⁉️ Обратная связь")
-    markup.add(item1, item2, item3, item4, item5, item6)
+    item2 = types.KeyboardButton("🎤 Произношение и аудио анализ")
+    item3 = types.KeyboardButton("🌐 Переводчик")
+    item4 = types.KeyboardButton("👂 Аудирование")
+    item5 = types.KeyboardButton("✍️ Тесты")
+    item6 = types.KeyboardButton("🎯 Ежедневные задания")
+    item7 = types.KeyboardButton("⁉️ Обратная связь")
+    if message.chat.id == 992935714:
+        item8 = types.KeyboardButton("⚙️ Панель разработчика")
+        markup.add(item1, item2, item3, item4, item5, item6, item7, item8)
+    else:
+        markup.add(item1, item2, item3, item4, item5, item6, item7)
 
     # Проверка наличия пользователя в базе данных
     if not user_exists(message.chat.id):
@@ -126,14 +132,14 @@ def listening_handler(message: telebot.types.Message):
     elif message.text in ["😌 Легко", "😐 Средне", "🤯 Сложно"]:
         logger.info(f'{message.chat.username} - {message.chat.last_name} - {message.chat.first_name} | Выбирает уровень {message.text} в режиме "Аудирование"')
 
-        if not user_audio_promotion_exists(message.chat.id):  # Создаём запись пользователя для отслеживания фраз если её ещё нет
-            create_user_audio_promotion(message.chat.id)
+        if not user_promotion_exists("user_audio_promotion", message.chat.id):  # Создаём запись пользователя для отслеживания фраз если её ещё нет
+            create_user_promotion("user_audio_promotion", message.chat.id)
 
         loading_message = bot.send_message(message.chat.id, " 🫠 Бот записывает голосовое сообщение, подождите...")
         voice_phrase = get_voice_message(message)
 
         if voice_phrase:
-            logger.info(f'{message.chat.username} - {message.chat.last_name} - {message.chat.first_name} | Бот отправляет фразу "{get_right_text_phrase(message.chat.id)}" в режиме "Аудирование"')
+            logger.info(f'{message.chat.username} - {message.chat.last_name} - {message.chat.first_name} | Бот отправляет фразу "{get_right_text_phrase("user_audio_promotion", message.chat.id)}" в режиме "Аудирование"')
 
             markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
             start_button = types.KeyboardButton("⬅️ Назад")
@@ -158,7 +164,7 @@ def check_phrase(message: telebot.types.Message):
         return handle_text(message, audio=True)
 
     # Удаляем знаки препинания и приводим текст к нижнему регистру для более удобного ввода пользователя
-    right_answer = delete_punctuation_marks(get_right_text_phrase(message.chat.id))
+    right_answer = delete_punctuation_marks(get_right_text_phrase("user_audio_promotion", message.chat.id))
     answer_from_user = delete_punctuation_marks(message.text)
 
     # Если пользователь дал верный ответ, то сообщаем ему об этом и удаляем из списка фразу, которую пользователь правильно написал
@@ -167,24 +173,114 @@ def check_phrase(message: telebot.types.Message):
         progress = get_progress_listening(message.chat.id)
         set_progress_listening(message.chat.id, progress + 1)
 
-        bot.send_message(message.chat.id, "Вы написали фразу верно, отлично ✅")
         logger.info(f'{message.chat.username} - {message.chat.last_name} - {message.chat.first_name} | даёт верный ответ в режиме "Аудирование" - {message.text}')
 
         check_complete_task(bot, message)
 
         # Удаляем верно написанную фразу
-        difficulty_lvl = get_difficulty_lvl(message.chat.id)
-        phrases = get_phrases(message.chat.id, difficulty_lvl)
-        phrases.remove(get_right_text_phrase(message.chat.id))
-        set_phrases(message.chat.id, difficulty_lvl, phrases)
+        difficulty_lvl = get_difficulty_lvl("user_audio_promotion", message.chat.id)
+        phrases = get_phrases("user_audio_promotion", message.chat.id, difficulty_lvl)
+        phrases.remove(get_right_text_phrase("user_audio_promotion", message.chat.id))
+        set_phrases("user_audio_promotion", message.chat.id, difficulty_lvl, phrases)
+
+        bot.send_message(message.chat.id, "Вы верно написали фразу, отлично ✅")
     else:
-        bot.send_message(message.chat.id, f"Вы ошиблись ❌\n\nПравильный вариант - {get_right_text_phrase(message.chat.id)}")
+        bot.send_message(message.chat.id, f"Вы ошиблись ❌\n\nПравильный вариант - {get_right_text_phrase('user_audio_promotion', message.chat.id)}")
         logger.info(f'{message.chat.username} - {message.chat.last_name} - {message.chat.first_name} | даёт неверный ответ в режиме "Аудирование" - {message.text}')
 
     # Обратно возвращаемся в меню выбора аудиосообщений
     set_user_state(message.chat.id, None)
     logger.info(f'{message.chat.username} - {message.chat.last_name} - {message.chat.first_name} | возвращается обратно к выбору уровня сложности в режиме "Аудирование"')
     handle_text(message, audio=True)
+
+
+# Режим "Произношение и аудио анализ"
+@bot.message_handler(func=lambda message: get_user_state(message.chat.id) == "pronunciation")
+def pronunciation_handler(message: telebot.types.Message):
+    if message.text == "⬅️ В начало":
+        set_user_state(message.chat.id, None)
+        logger.info(f'{message.chat.username} - {message.chat.last_name} - {message.chat.first_name} | возвращается в главное меню из режима "Произношение и аудио анализ"')
+        welcome(message)
+    elif message.text in ["😌 Легко", "😐 Средне", "🤯 Сложно"]:
+        logger.info(f'{message.chat.username} - {message.chat.last_name} - {message.chat.first_name} | Выбирает уровень {message.text} в режиме "Произношение и аудио анализ"')
+
+        if not user_promotion_exists("user_pronunciation_promotion", message.chat.id):  # Создаём запись пользователя для отслеживания фраз если её ещё нет
+            create_user_promotion("user_pronunciation_promotion", message.chat.id)
+
+        phrase = get_pronunciation_phrase(message)
+
+        if phrase:
+            logger.info(f'{message.chat.username} - {message.chat.last_name} - {message.chat.first_name} | Бот отправляет фразу "{phrase}" в режиме "Произношение и аудио анализ"')
+
+            markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+            start_button = types.KeyboardButton("⬅️ Назад")
+            markup.add(start_button)
+
+            set_user_state(message.chat.id, 'pronunciation_answer')
+            bot.send_message(message.chat.id, f"{phrase}", reply_markup=markup)
+        else:
+            logger.info(f'{message.chat.username} - {message.chat.last_name} - {message.chat.first_name} | написал(а) все фразы уровня {message.text} в режиме "Произношение и аудио анализ".')
+            bot.send_message(message.chat.id, "Вы отлично справились со всеми фразами на этом уровне, Well done 👍")
+
+
+# Проверяем верно ли пользователь произнёс фразу
+@bot.message_handler(func=lambda message: get_user_state(message.chat.id) == "pronunciation_answer", content_types=['voice'])
+def check_voice_message(message):
+    loading_message = bot.send_message(message.chat.id, "🫠 Бот обрабатывает ваше голосовое сообщение, подождите...")
+    user_voice = convert_voice_in_text(bot, message)
+    if user_voice:
+        # Удаляем знаки препинания и приводим текст к нижнему регистру для удобного сравнения
+        answer_from_user = delete_punctuation_marks(user_voice)
+        right_answer = delete_punctuation_marks(get_right_text_phrase("user_pronunciation_promotion", message.chat.id))
+
+        # Если пользователь дал верный ответ, то сообщаем ему об этом и удаляем из списка фразу, которую пользователь правильно написал
+        if right_answer == answer_from_user:
+            # Увеличиваем прогресс аудио анализа на 1 для дейликов
+            progress = get_progress_pronunciation(message.chat.id)
+            set_progress_pronunciation(message.chat.id, progress + 1)
+
+            logger.info(
+                f'{message.chat.username} - {message.chat.last_name} - {message.chat.first_name} | даёт верный ответ в режиме "Произношение и аудио анализ"')
+
+            check_complete_task(bot, message)
+
+            # Удаляем верно написанную фразу
+            difficulty_lvl = get_difficulty_lvl("user_pronunciation_promotion", message.chat.id)
+            phrases = get_phrases("user_pronunciation_promotion", message.chat.id, difficulty_lvl)
+            phrases.remove(get_right_text_phrase("user_pronunciation_promotion", message.chat.id))
+            set_phrases("user_pronunciation_promotion", message.chat.id, difficulty_lvl, phrases)
+
+            bot.edit_message_text(chat_id=message.chat.id, message_id=loading_message.message_id,
+                                  text="Вы верно произнесли фразу ✅")
+        else:
+            bot.edit_message_text(chat_id=message.chat.id, message_id=loading_message.message_id, text=f"Вы ошиблись ❌\n\nВаш вариант - {user_voice}")
+            loading_message = bot.send_message(message.chat.id, "🫠 Бот записывает верное произношение фразы, подождите...")
+            correct_pronunciation = record_voice_message(get_right_text_phrase("user_pronunciation_promotion", message.chat.id))  # Получаем запись фразы
+            bot.send_voice(message.chat.id, voice=correct_pronunciation)
+            bot.edit_message_text(chat_id=message.chat.id, message_id=loading_message.message_id, text="Бот записал верное произношение фразы 🎙️")
+            logger.info(
+                f'{message.chat.username} - {message.chat.last_name} - {message.chat.first_name} | даёт неверный ответ в режиме "Произношение и аудио анализ" - {user_voice}')
+    else:
+        bot.edit_message_text(chat_id=message.chat.id, message_id=loading_message.message_id, text='🔴 Что-то пошло не так, попробуйте отправить сообщение ещё раз')
+        logger.error(f"{message.chat.username} - {message.chat.last_name} - {message.chat.first_name} | Ошибка записи аудио")
+
+    # Обратно возвращаемся в меню выбора аудиосообщений
+    set_user_state(message.chat.id, None)
+    logger.info(
+        f'{message.chat.username} - {message.chat.last_name} - {message.chat.first_name} | возвращается обратно к выбору уровня сложности в режиме "Произношение и аудио анализ"')
+    handle_text(message, pronunciation=True)
+
+
+@bot.message_handler(func=lambda message: get_user_state(message.chat.id) == "pronunciation_answer", content_types=['text'])
+def handle_text_message_in_pronunciation(message):
+    if message.text == "⬅️ Назад":
+        # Обратно возвращаемся в меню выбора фраз
+        set_user_state(message.chat.id, None)
+        logger.info(f'{message.chat.username} - {message.chat.last_name} - {message.chat.first_name} | без ответа возвращается обратно к выбору уровня сложности в режиме "Произношение и аудио анализ"')
+        return handle_text(message, pronunciation=True)
+
+    logger.info(f'{message.chat.username} - {message.chat.last_name} - {message.chat.first_name} | Отправил(а) сообщение текстом в режиме "Произношение и аудио анализ"')
+    bot.send_message(message.chat.id, "Режим полагает отправку голосовых сообщений 🎙")
 
 
 # Режим "Тесты"
@@ -327,12 +423,84 @@ def handle_daily(message: telebot.types.Message):
         welcome(message)
 
 
+@bot.message_handler(func=lambda message: get_user_state(message.chat.id) == "admin")
+def admin_handler(message: telebot.types.Message):
+    if message.text == "⬅️ В начало":
+        logger.info(f'{message.chat.username} - {message.chat.last_name} - {message.chat.first_name} | возвращается в главное меню из раздела "Ежедневные задания"')
+        return welcome(message)
+    elif message.text == "✉️ Отправить сообщение всем пользователям":
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        start_button = types.KeyboardButton("⬅️ В начало")
+        markup.add(start_button)
+
+        set_user_state(message.chat.id, 'send_message_all_users')
+        bot.send_message(message.chat.id, "Введите сообщение и его увидят все пользователи.\n"
+                                          "Не беспокойте людей без необходимости, они не оценят =)", reply_markup=markup)
+    elif message.text == "📝 Просмотр логов":
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        start_button = types.KeyboardButton("⬅️ В начало")
+        markup.add(start_button)
+
+        set_user_state(message.chat.id, 'Viewing_logs')
+        bot.send_message(message.chat.id, "Введите количество строк", reply_markup=markup)
+
+
+@bot.message_handler(func=lambda message: get_user_state(message.chat.id) == "send_message_all_users", content_types=['text', 'voice', 'video', 'photo', 'document', 'audio', 'sticker'])
+def send_message_all_user_handler(message: telebot.types.Message):
+    if message.text == "⬅️ В начало":
+        logger.info(f'{message.chat.username} - {message.chat.last_name} - {message.chat.first_name} | возвращается в главное меню из раздела "Отправить сообщение всем пользователям"')
+        return welcome(message)
+
+    users = get_all_users()  # Получаем всех пользователей бота
+    for user in users:
+        try:
+            if message.content_type == 'text':
+                bot.send_message(user, message.text)
+            elif message.content_type == 'voice':
+                bot.send_voice(user, message.voice.file_id)
+            elif message.content_type == 'video':
+                caption = message.caption if message.caption else None
+                bot.send_video(user, message.video.file_id, caption=caption)
+            elif message.content_type == 'photo':
+                caption = message.caption if message.caption else None
+                bot.send_photo(user, message.photo[-1].file_id, caption=caption)
+            elif message.content_type == 'sticker':
+                bot.send_sticker(user, message.sticker.file_id)
+            elif message.content_type == 'audio':
+                bot.send_audio(user, message.audio.file_id)
+            elif message.content_type == 'document':
+                bot.send_document(user, message.document.file_id)
+        except Exception as ex:
+            logger.error(f"Произошла ошибка при отправке сообщения пользователю {user}: {ex}")
+
+    bot.send_message(message.chat.id, "Вы отправили сообщение всем пользователям")
+    logger.info(f"{message.chat.username} - {message.chat.last_name} - {message.chat.first_name} | Отправляет сообщение всем пользователям в панели администратора")
+
+
+@bot.message_handler(func=lambda message: get_user_state(message.chat.id) == "Viewing_logs")
+def viewing_logs_handler(message: telebot.types.Message):
+    if message.text == "⬅️ В начало":
+        logger.info(f'{message.chat.username} - {message.chat.last_name} - {message.chat.first_name} | возвращается в главное меню из раздела "Просмотр логов"')
+        return welcome(message)
+    try:
+        with open('my_log_file.txt', 'r', encoding='utf-8') as file:
+            lines = file.readlines()
+            last_10_lines = lines[-int(message.text):]  # Выбираем последние 10 строк из файла логов
+            logs_message = '\n'.join(last_10_lines)  # Преобразуем список строк в одну строку
+            bot.send_message(message.chat.id, f"Последние {int(message.text)} строк из логов:\n" + logs_message)
+            logger.info(
+                f'{message.chat.username} - {message.chat.last_name} - {message.chat.first_name} | просмотрел {int(message.text)} строк в режиме "Просмотр логов"')
+    except FileNotFoundError:
+        bot.send_message(message.chat.id, "Файл логов не найден.")
+        logger.error("Произошла ошибка при чтении логов: Файл не найден")
+    except Exception as ex:
+        bot.send_message(message.chat.id, f"Произошла ошибка при чтении логов: {str(ex)}")
+
+
 @bot.message_handler(content_types=["text"])
-def handle_text(message: telebot.types.Message, audio=False):
+def handle_text(message: telebot.types.Message, audio=False, pronunciation=False):
     if message.text == "🗣️ Общение с носителем языка":
         logger.info(f'{message.chat.username} - {message.chat.last_name} - {message.chat.first_name} | входит в режим "Общение с носителем языка"')
-        # Сбрасываем предыдущее состояние
-        set_user_state(message.chat.id, None)
         set_user_state(message.chat.id, "conversation")
 
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -346,8 +514,6 @@ def handle_text(message: telebot.types.Message, audio=False):
                          reply_markup=markup, parse_mode='Markdown')
     elif message.text == "🌐 Переводчик":
         logger.info(f'{message.chat.username} - {message.chat.last_name} - {message.chat.first_name} | входит в режим "Переводчик"')
-        # Сбрасываем предыдущее состояние
-        set_user_state(message.chat.id, None)
         set_user_state(message.chat.id, "translating")
 
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -360,9 +526,6 @@ def handle_text(message: telebot.types.Message, audio=False):
                                           'Чтобы продолжить, введите текст для перевода 📝',
                          reply_markup=markup, parse_mode='Markdown')
     elif message.text == "✍️ Тесты":
-        logger.info(f'{message.chat.username} - {message.chat.last_name} - {message.chat.first_name} | входит в режим "Тесты"')
-        # Сбрасываем предыдущее состояние
-        set_user_state(message.chat.id, None)
         set_user_state(message.chat.id, "tests")
 
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -376,15 +539,16 @@ def handle_text(message: telebot.types.Message, audio=False):
         start_button = types.KeyboardButton("⬅️ В начало")
         markup.add(a0, a1, a2, b1, b2, c1, c2, start_button)
 
+        logger.info(
+            f'{message.chat.username} - {message.chat.last_name} - {message.chat.first_name} | входит в режим "Тесты"')
+
         bot.send_message(message.chat.id, 'Добро пожаловать в захватывающий режим *"Тесты"* 📝!\n\n'
                                           'Здесь вы сможете проверить свои знания, пройдя увлекательные тесты по разнообразным темам. 🌐🧠\n'
                                           'Готовьтесь к вызову ума, и давайте вместе пройдем этот увлекательный путь знаний! 🚀💡\n\n'
                                           'Давайте узнаем, насколько хорошо вы владеете выбранным уровнем. 🌟🤔\n\n'
                                           'Погрузитесь в мир вопросов и ответов, чтобы узнать что-то новое и удивительное! 🌈🌐',
                          reply_markup=markup, parse_mode='Markdown')
-    elif message.text == "👂 Аудирование" or audio:  # Если переменная audio True, значит мы продолжаем быть в режиме аудирование
-        # Сбрасываем предыдущее состояние
-        set_user_state(message.chat.id, None)
+    elif message.text == "👂 Аудирование" or audio:  # Если переменная audio_log True, значит мы продолжаем быть в режиме аудирование
         set_user_state(message.chat.id, "listening")
 
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -394,8 +558,9 @@ def handle_text(message: telebot.types.Message, audio=False):
         hard_lvl = types.KeyboardButton("🤯 Сложно")
         markup.add(easy_lvl, medium_lvl, hard_lvl, start_button)
 
+        logger.info(f'{message.chat.username} - {message.chat.last_name} - {message.chat.first_name} | входит в режим "Аудирование"')
+
         if not audio:
-            logger.info(f'{message.chat.username} - {message.chat.last_name} - {message.chat.first_name} | входит в режим "Аудирование"')
 
             bot.send_message(message.chat.id, 'Добро пожаловать в увлекательный режим *"Аудирование"*! 👂\n\n'
                                               'Здесь вы имеете возможность улучшить свое восприятие английской речи и избавиться от путаницы в словах 😃.\n\n'
@@ -408,8 +573,36 @@ def handle_text(message: telebot.types.Message, audio=False):
             bot.send_message(message.chat.id, "Продолжайте покорять вершины режима *Аудирование*!\n"
                                               "Слушать на английском - значит погружаться в мир мировой культуры, образования и инноваций.",
                              reply_markup=markup, parse_mode='Markdown')
+    elif message.text == "🎤 Произношение и аудио анализ" or pronunciation:
+        set_user_state(message.chat.id, "pronunciation")
+
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        start_button = types.KeyboardButton("⬅️ В начало")
+        easy_lvl = types.KeyboardButton("😌 Легко")
+        medium_lvl = types.KeyboardButton("😐 Средне")
+        hard_lvl = types.KeyboardButton("🤯 Сложно")
+        markup.add(easy_lvl, medium_lvl, hard_lvl, start_button)
+
+        logger.info(f'{message.chat.username} - {message.chat.last_name} - {message.chat.first_name} | входит в режим "Произношение и аудио анализ"')
+
+        if not pronunciation:
+            bot.send_message(message.chat.id, 'Добро пожаловать в увлекательный режим *"Произношение и аудио анализ"*! 🎤️\n\n'
+                                              'Здесь вы сможете улучшить свои навыки произношения английских фраз и слов, '
+                                              'а также научиться говорить более четко и правильно! 😊\n\n'
+                                              'Ваша задача состоит в следующем: бот отправит вам английскую фразу 📩, '
+                                              'и ваша задача - записать голосовое сообщение с верным произнесением этой фразы 🎙️.\n\n'
+                                              'Не волнуйтесь, если не с первого раза получится идеальное произношение! '
+                                              'Главное - попробовать и продолжать развиваться! 💪\n\n'
+                                              'Готовы начать свой путь к идеальному английскому произношению? '
+                                              'Тогда давайте начнем! 🚀',
+                             reply_markup=markup, parse_mode='Markdown')
+        elif pronunciation:
+            bot.send_message(message.chat.id,
+                             "Продолжайте совершенствовать свои навыки в режиме *Произношение и аудио анализ*! 🎙️🔍\n"
+                             "Говорить на английском правильно - значит быть ближе к достижению ваших целей "
+                             "и расширению горизонтов в мировом сообществе! 💬🌍",
+                             reply_markup=markup, parse_mode='Markdown')
     elif message.text == "🎯 Ежедневные задания":
-        set_user_state(message.chat.id, None)
         set_user_state(message.chat.id, "daily")
 
         logger.info(f'{message.chat.username} - {message.chat.last_name} - {message.chat.first_name} | заходит в раздел "Ежедневные задания"')
@@ -428,7 +621,6 @@ def handle_text(message: telebot.types.Message, audio=False):
                                           f'Ваши задания на сегодня:\n\n{get_tasks(message.chat.id)}',
                          reply_markup=markup, parse_mode='Markdown')
     elif message.text == "⁉️ Обратная связь":
-        set_user_state(message.chat.id, None)
         set_user_state(message.chat.id, "feedback")
 
         logger.info(f'{message.chat.username} - {message.chat.last_name} - {message.chat.first_name} | заходит в раздел "Обратная связь"')
@@ -442,6 +634,19 @@ def handle_text(message: telebot.types.Message, audio=False):
                                           'Ваши отзывы помогут сделать бота еще лучше.\n\n'
                                           'Благодарю вас за использование бота и за ваши ценные замечания! 🙏🤖',
                          reply_markup=markup, parse_mode='Markdown')
+    elif message.text == "⚙️ Панель разработчика" and message.chat.id == 992935714:
+        set_user_state(message.chat.id, "admin")
+
+        logger.info(
+            f'{message.chat.username} - {message.chat.last_name} - {message.chat.first_name} | заходит в раздел "Панель разработчика"')
+
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=True)
+        start_button = types.KeyboardButton("⬅️ В начало")
+        send_message_all_users = types.KeyboardButton("✉️ Отправить сообщение всем пользователям")
+        check_logs = types.KeyboardButton("📝 Просмотр логов")
+        markup.add(send_message_all_users, check_logs, start_button)
+
+        bot.send_message(message.chat.id, f"{message.chat.first_name}, Вы авторизованы как администратор!", reply_markup=markup)
     else:
         logger.info(f'{message.chat.username} - {message.chat.last_name} - {message.chat.first_name} | отправляет сообщение без режима - {message.text}')
         bot.send_message(message.chat.id, "Выберите функцию для бота =)")

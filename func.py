@@ -1,13 +1,19 @@
+import os
 import requests
 from log import logger
-from config import YANDEX_TRANSLATE_TOKEN, YANDEXGPT_TOKEN
-from phrase import easy_phrases, medium_phrases, hard_phrases
+from config import YANDEX_TRANSLATE_TOKEN, YANDEXGPT_TOKEN, YANDEX_SPEECHKIT_TOKEN, FOLDER_ID
+from phrase import audio_easy_phrases, audio_medium_phrases, audio_hard_phrases,\
+    pronunciation_easy_phrases, pronunciation_medium_phrases, pronunciation_hard_phrases
 from database import get_phrases, set_phrases, set_difficulty_lvl, set_right_text_phrase, set_task_name, get_progress_conversation,\
-    get_progress_listening, get_progress_translating, get_progress_tests, set_is_day_completed, get_days_completed, set_days_completed, get_is_day_completed
+    get_progress_listening, get_progress_translating, get_progress_tests, set_is_day_completed, get_days_completed, set_days_completed, get_is_day_completed,\
+    get_progress_pronunciation
 import random
 from gtts import gTTS
 from io import BytesIO
 import datetime
+import urllib.request
+import json
+import re
 
 
 def talking_to_ai(message):
@@ -162,28 +168,34 @@ def get_voice_message(message):
     try:
         if message.text == "😌 Легко":
             difficulty_lvl = 'easy_phrases'
-            lvl_phrases = easy_phrases
+            lvl_phrases = audio_easy_phrases
         elif message.text == "😐 Средне":
             difficulty_lvl = 'medium_phrases'
-            lvl_phrases = medium_phrases
+            lvl_phrases = audio_medium_phrases
         elif message.text == "🤯 Сложно":
             difficulty_lvl = 'hard_phrases'
-            lvl_phrases = hard_phrases
+            lvl_phrases = audio_hard_phrases
 
-        if not get_phrases(message.chat.id, difficulty_lvl):
-            set_phrases(message.chat.id, difficulty_lvl, lvl_phrases)
-        set_difficulty_lvl(message.chat.id, difficulty_lvl)
-        phrases = get_phrases(message.chat.id, difficulty_lvl)
+        if not get_phrases("user_audio_promotion", message.chat.id, difficulty_lvl):
+            set_phrases("user_audio_promotion", message.chat.id, difficulty_lvl, lvl_phrases)
+        set_difficulty_lvl("user_audio_promotion", message.chat.id, difficulty_lvl)
+        phrases = get_phrases("user_audio_promotion", message.chat.id, difficulty_lvl)
         random.shuffle(phrases)
         phrase = phrases[0]
-        set_right_text_phrase(message.chat.id, phrase)
+        set_right_text_phrase("user_audio_promotion", message.chat.id, phrase)
 
     # Если появляется ошибка, значит фразы кончились, далее сообщим пользователю, что он справился со всеми фразами
     except TypeError:
         return None
 
+    voice_message = record_voice_message(phrase)
+
+    return voice_message
+
+
+def record_voice_message(text):
     # текст для озвучивания
-    text_to_speech = phrase
+    text_to_speech = text
 
     # Создаём объект gTTS с текстом
     tts = gTTS(text=text_to_speech, lang='en')
@@ -196,6 +208,33 @@ def get_voice_message(message):
     voice_message.seek(0)
 
     return voice_message
+
+
+def get_pronunciation_phrase(message):
+    try:
+        if message.text == "😌 Легко":
+            difficulty_lvl = 'easy_phrases'
+            lvl_phrases = pronunciation_easy_phrases
+        elif message.text == "😐 Средне":
+            difficulty_lvl = 'medium_phrases'
+            lvl_phrases = pronunciation_medium_phrases
+        elif message.text == "🤯 Сложно":
+            difficulty_lvl = 'hard_phrases'
+            lvl_phrases = pronunciation_hard_phrases
+
+        if not get_phrases("user_pronunciation_promotion", message.chat.id, difficulty_lvl):
+            set_phrases("user_pronunciation_promotion", message.chat.id, difficulty_lvl, lvl_phrases)
+        set_difficulty_lvl("user_pronunciation_promotion", message.chat.id, difficulty_lvl)
+        phrases = get_phrases("user_pronunciation_promotion", message.chat.id, difficulty_lvl)
+        random.shuffle(phrases)
+        phrase = phrases[0]
+        set_right_text_phrase("user_pronunciation_promotion", message.chat.id, phrase)
+
+    # Если появляется ошибка, значит фразы кончились, далее сообщим пользователю, что он справился со всеми фразами
+    except TypeError:
+        return None
+
+    return phrase
 
 
 def delete_punctuation_marks(text: str):
@@ -222,6 +261,72 @@ def calculate_score(all_questions, right_questions):
         return "Отличный результат 👍\nВам вручается звание Знатока! Теперь можно идти разгадывать загадки Вселенной."
 
 
+def convert_voice_in_text(bot, message):
+    try:
+        params = "&".join([
+            "topic=general",
+            "folderId=%s" % FOLDER_ID,
+            "lang=en-EN"
+        ])
+
+        # Получение аудиоданных из объекта аудио
+        file_info = bot.get_file(message.voice.file_id)
+        downloaded_file = bot.download_file(file_info.file_path)
+
+        # Очистка недопустимых символов из имен файлов
+        chat_id = str(message.chat.id)
+        username = re.sub(r'\W+', '_', message.chat.username) if message.chat.username else "unknown_username"
+        first_name = re.sub(r'\W+', '_', message.chat.first_name)
+
+        # Сохранение аудио в логи
+        save_voice_message(downloaded_file, chat_id, username, first_name)
+
+        url = "https://stt.api.cloud.yandex.net/speech/v1/stt:recognize?%s" % params
+        headers = {"Authorization": "Api-key %s" % YANDEX_SPEECHKIT_TOKEN}
+
+        req = urllib.request.Request(url, data=downloaded_file, headers=headers)
+        responseData = urllib.request.urlopen(req).read().decode('UTF-8')
+        decodedData = json.loads(responseData)
+
+        if decodedData.get("error_code") is None:
+            return decodedData.get("result")
+        else:
+            logger.error("Ошибка при распознавании аудио: {}".format(decodedData.get("error_code")))
+            return None
+    except Exception as e:
+        logger.error("Error occurred: {}".format(e))
+        return None
+
+
+def save_voice_message(downloaded_file, chat_id, username, first_name):
+    # Создание директории для сохранения аудиозаписей, если она не существует
+    if not os.path.exists('audio_logs'):
+        os.makedirs('audio_logs')
+
+    # Формирование базового имени файла
+    base_filename = f'{chat_id}_{username}_{first_name}.ogg'
+    # Полный путь к файлу
+    file_path = os.path.join('audio_logs', base_filename)
+
+    # Проверка наличия файла
+    if os.path.exists(file_path):
+        # Если файл существует, добавляем суффикс к имени файла до тех пор, пока не найдем уникальное имя
+        index = 1
+        while True:
+            new_filename = f'{chat_id}_{username}_{first_name}({index}).ogg'
+            new_file_path = os.path.join('audio_logs', new_filename)
+            if not os.path.exists(new_file_path):
+                file_path = new_file_path
+                break
+            index += 1
+
+    # Сохранение аудиозаписи под уникальным именем файла
+    with open(file_path, 'wb') as audio_file:
+        audio_file.write(downloaded_file)
+
+    return file_path
+
+
 def get_tasks(user):
     today = datetime.datetime.now().weekday()  # Получаем в переменную день недели. Каждый день разные задания
     if today == 0 and not get_is_day_completed(user):
@@ -233,8 +338,8 @@ def get_tasks(user):
                '2) Перевести 5 разных слов или предложений в переводчике'
         set_task_name(user, task)
     elif today == 2 and not get_is_day_completed(user):
-        task = '1) Правильно написать 5 фраз в режиме "Аудирование" на любом уровне сложности\n' \
-               '2) Перевести 5 разных слов или предложений в переводчике'
+        task = '1) Правильно произнести 5 фраз в режиме "Произношение и аудио анализ" на любом уровне сложности\n' \
+               '2) Правильно написать 5 фраз в режиме "Аудирование" на любом уровне сложности'
         set_task_name(user, task)
     elif today == 3 and not get_is_day_completed(user):
         task = '1) Поговорить или задать вопросы в режиме "Общение с носителем языка" 5 раз\n' \
@@ -242,14 +347,14 @@ def get_tasks(user):
         set_task_name(user, task)
     elif today == 4 and not get_is_day_completed(user):
         task = '1) Правильно написать 5 фраз в режиме "Аудирование" на любом уровне сложности\n' \
-               '2) Пройти любой тест и набрать не менее 70%'
+               '2) Правильно произнести 5 фраз в режиме "Произношение и аудио анализ" на любом уровне сложности'
         set_task_name(user, task)
     elif today == 5 and not get_is_day_completed(user):
         task = '1) Поговорить или задать вопросы в режиме "Общение с носителем языка" 5 раз\n' \
                '2) Перевести 5 разных слов или предложений в переводчике'
         set_task_name(user, task)
     elif today == 6 and not get_is_day_completed(user):
-        task = '1) Правильно написать 5 фраз в режиме "Аудирование" на любом уровне сложности\n' \
+        task = '1) Правильно произнести 5 фраз в режиме "Произношение и аудио анализ" на любом уровне сложности\n' \
                '2) Пройти любой тест и набрать не менее 70%'
         set_task_name(user, task)
     else:
@@ -283,7 +388,7 @@ def check_complete_task(bot, message):
                 logger.info(
                     f'{message.chat.username} - {message.chat.last_name} - {message.chat.first_name} | выполнил(а) квест за вторник')
         elif today == 2:
-            if get_progress_listening(message.chat.id) >= 5 and get_progress_translating(message.chat.id) >= 5:
+            if get_progress_pronunciation(message.chat.id) >= 5 and get_progress_listening(message.chat.id) >= 5:
                 set_is_day_completed(message.chat.id, 1)
 
                 days_completed = get_days_completed(message.chat.id)
@@ -305,7 +410,7 @@ def check_complete_task(bot, message):
                 logger.info(
                     f'{message.chat.username} - {message.chat.last_name} - {message.chat.first_name} | выполнил(а) квест за четверг')
         elif today == 4:
-            if get_progress_listening(message.chat.id) >= 5 and get_progress_tests(message.chat.id) >= 1:
+            if get_progress_listening(message.chat.id) >= 5 and get_progress_pronunciation(message.chat.id) >= 5:
                 set_is_day_completed(message.chat.id, 1)
 
                 days_completed = get_days_completed(message.chat.id)
@@ -327,7 +432,7 @@ def check_complete_task(bot, message):
                 logger.info(
                     f'{message.chat.username} - {message.chat.last_name} - {message.chat.first_name} | выполнил(а) квест за субботу')
         elif today == 6:
-            if get_progress_listening(message.chat.id) >= 5 and get_progress_tests(message.chat.id) >= 1:
+            if get_progress_pronunciation(message.chat.id) >= 5 and get_progress_tests(message.chat.id) >= 1:
                 set_is_day_completed(message.chat.id, 1)
 
                 days_completed = get_days_completed(message.chat.id)

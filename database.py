@@ -38,6 +38,18 @@ def create_table():
     ''')
 
     cursor.execute('''
+        CREATE TABLE IF NOT EXISTS user_pronunciation_promotion (
+            user_id INTEGER PRIMARY KEY,
+            easy_phrases TEXT,
+            medium_phrases TEXT,
+            hard_phrases TEXT,
+            difficulty_lvl TEXT,
+            'right_answer' TEXT,
+            FOREIGN KEY (user_id) REFERENCES users(user_id)
+        )
+    ''')
+
+    cursor.execute('''
         CREATE TABLE IF NOT EXISTS daily_phrases (
             phrase_id INTEGER PRIMARY KEY,
             text TEXT
@@ -51,6 +63,7 @@ def create_table():
             progress_conversation INTEGER DEFAULT 0,
             progress_translating INTEGER DEFAULT 0,
             progress_listening INTEGER DEFAULT 0,
+            progress_pronunciation INTEGER DEFAULT 0,
             progress_tests INTEGER DEFAULT 0,
             is_day_completed BOOLEAN DEFAULT 0,
             days_completed INTEGER DEFAULT 0,
@@ -181,12 +194,12 @@ def set_right_answers(user_id, right_answers):
     conn.close()
 
 
-# Проверка на существование пользователя, геттеры, сеттеры и т.п для таблицы user_audio_promotion
-def user_audio_promotion_exists(user_id):
+# Проверка на существование пользователя, геттеры, сеттеры и т.п для таблицы user_audio_promotion и user_pronunciation_promotion
+def user_promotion_exists(table_name, user_id):
     conn = sqlite3.connect('my_database.db')
     cursor = conn.cursor()
 
-    cursor.execute('SELECT user_id FROM user_audio_promotion WHERE user_id = ?', (user_id,))
+    cursor.execute(f'SELECT user_id FROM {table_name} WHERE user_id = ?', (user_id,))
     result = cursor.fetchone()
 
     conn.close()
@@ -194,23 +207,23 @@ def user_audio_promotion_exists(user_id):
     return result is not None
 
 
-def create_user_audio_promotion(user_id, easy_phrases=None, medium_phrases=None, hard_phrases=None, difficulty_lvl=None, right_answer=None):
+def create_user_promotion(table_name, user_id, easy_phrases=None, medium_phrases=None, hard_phrases=None, difficulty_lvl=None, right_answer=None):
     conn = sqlite3.connect('my_database.db')
     cursor = conn.cursor()
 
-    cursor.execute('''
-        INSERT INTO user_audio_promotion (user_id, easy_phrases, medium_phrases, hard_phrases, difficulty_lvl, right_answer)
+    cursor.execute(f'''
+        INSERT INTO {table_name} (user_id, easy_phrases, medium_phrases, hard_phrases, difficulty_lvl, right_answer)
         VALUES (?, ?, ?, ?, ?, ?)
     ''', (user_id, easy_phrases, medium_phrases, hard_phrases, difficulty_lvl, right_answer))
     conn.commit()
     conn.close()
 
 
-def get_phrases(user_id, difficulty_lvl):
+def get_phrases(table_name, user_id, difficulty_lvl):
     conn = sqlite3.connect('my_database.db')
     cursor = conn.cursor()
 
-    cursor.execute(f'SELECT {difficulty_lvl} FROM user_audio_promotion WHERE user_id = ?', (user_id,))
+    cursor.execute(f'SELECT {difficulty_lvl} FROM {table_name} WHERE user_id = ?', (user_id,))
     result = cursor.fetchone()
 
     conn.close()
@@ -222,23 +235,23 @@ def get_phrases(user_id, difficulty_lvl):
         return None
 
 
-def set_phrases(user_id, difficulty_lvl, phrases):
+def set_phrases(table_name, user_id, difficulty_lvl, phrases):
     phrases_as_json = json.dumps(phrases)  # sqlite не поддерживает списки, поэтому преобразовываем переменную в json объект
 
     conn = sqlite3.connect('my_database.db')
     cursor = conn.cursor()
 
-    cursor.execute(f'UPDATE user_audio_promotion SET {difficulty_lvl} = ? WHERE user_id = ?', (phrases_as_json, user_id))
+    cursor.execute(f'UPDATE {table_name} SET {difficulty_lvl} = ? WHERE user_id = ?', (phrases_as_json, user_id))
     conn.commit()
 
     conn.close()
 
 
-def get_difficulty_lvl(user_id):
+def get_difficulty_lvl(table_name, user_id):
     conn = sqlite3.connect('my_database.db')
     cursor = conn.cursor()
 
-    cursor.execute('SELECT difficulty_lvl FROM user_audio_promotion WHERE user_id = ?', (user_id,))
+    cursor.execute(f'SELECT difficulty_lvl FROM {table_name} WHERE user_id = ?', (user_id,))
     result = cursor.fetchone()
 
     conn.close()
@@ -246,21 +259,21 @@ def get_difficulty_lvl(user_id):
     return result[0] if result[0] else None
 
 
-def set_difficulty_lvl(user_id, difficulty_lvl):
+def set_difficulty_lvl(table_name, user_id, difficulty_lvl):
     conn = sqlite3.connect('my_database.db')
     cursor = conn.cursor()
 
-    cursor.execute('UPDATE user_audio_promotion SET difficulty_lvl = ? WHERE user_id = ?', (difficulty_lvl, user_id))
+    cursor.execute(f'UPDATE {table_name} SET difficulty_lvl = ? WHERE user_id = ?', (difficulty_lvl, user_id))
     conn.commit()
 
     conn.close()
 
 
-def get_right_text_phrase(user_id):
+def get_right_text_phrase(table_name, user_id):
     conn = sqlite3.connect('my_database.db')
     cursor = conn.cursor()
 
-    cursor.execute('SELECT right_answer FROM user_audio_promotion WHERE user_id = ?', (user_id,))
+    cursor.execute(f'SELECT right_answer FROM {table_name} WHERE user_id = ?', (user_id,))
     result = cursor.fetchone()
 
     conn.close()
@@ -268,11 +281,11 @@ def get_right_text_phrase(user_id):
     return result[0] if result[0] else None
 
 
-def set_right_text_phrase(user_id, right_answer):
+def set_right_text_phrase(table_name, user_id, right_answer):
     conn = sqlite3.connect('my_database.db')
     cursor = conn.cursor()
 
-    cursor.execute('UPDATE user_audio_promotion SET right_answer = ? WHERE user_id = ?', (right_answer, user_id))
+    cursor.execute(f'UPDATE {table_name} SET right_answer = ? WHERE user_id = ?', (right_answer, user_id))
     conn.commit()
 
     conn.close()
@@ -419,6 +432,28 @@ def get_progress_listening(user_id):
     cursor = conn.cursor()
 
     cursor.execute('SELECT progress_listening FROM daily_tasks WHERE user_id = ?', (user_id,))
+    result = cursor.fetchone()
+
+    conn.close()
+
+    return result[0] if result else None
+
+
+def set_progress_pronunciation(user_id, progress_pronunciation):
+    conn = sqlite3.connect('my_database.db')
+    cursor = conn.cursor()
+
+    cursor.execute('UPDATE daily_tasks SET progress_pronunciation = ? WHERE user_id = ?', (progress_pronunciation, user_id))
+    conn.commit()
+
+    conn.close()
+
+
+def get_progress_pronunciation(user_id):
+    conn = sqlite3.connect('my_database.db')
+    cursor = conn.cursor()
+
+    cursor.execute('SELECT progress_pronunciation FROM daily_tasks WHERE user_id = ?', (user_id,))
     result = cursor.fetchone()
 
     conn.close()
